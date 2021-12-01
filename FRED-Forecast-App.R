@@ -15,6 +15,8 @@ library(DT)
 library(formattable)
 library(rsconnect)
 
+# My first comment
+
 fredr_set_key("0962c1d1b6316b7c4b6c68ced8211ac9")
 
 ui <- fluidPage(theme = shinytheme("flatly"),
