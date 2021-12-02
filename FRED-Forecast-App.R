@@ -14,48 +14,51 @@ library(scales)
 library(DT)
 library(formattable)
 library(rsconnect)
+library(thematic)
+library(bslib)
 
 # My first comment
 
 fredr_set_key("0962c1d1b6316b7c4b6c68ced8211ac9")
 
-ui <- fluidPage(theme = shinytheme("flatly"),
-  headerPanel("Graham's Economic Forecasting Device"),             
-  sidebarLayout(
-    sidebarPanel(
-      selectInput("series", 
-                  "Choose a series:",
-                  choices = c("RGDP", "CPI", "Unemployment")),
-      selectInput("interval", 
-                  "Choose a forecast interval:",
-                  choices = c("80%", "90%", "95%", "99%")),
-      sliderInput("periods",
-                  "Forecasting periods ahead:",
-                  min = 2,
-                  max = 12,
-                  value = 2),
-      submitButton("Udate Forecast", icon("refresh")),
-    ),
-    mainPanel(
-      tabsetPanel(type="tabs",
-                  tabPanel("Forecast",
-                    h4("Plot"),
-                    plotOutput("forecast.plot"),
-                    h4("Summary of Data"),
-                    tableOutput("summary.table")
-                    ),
-                  tabPanel("View FRED Data",dataTableOutput("fred.table"))
-                  )
-    ),
-    position = "left",
-    fluid = TRUE
-  )  
+ui <- fluidPage(theme = shinytheme("cosmo"),
+                headerPanel("Graham's Economic Forecasting Device"),             
+                sidebarLayout(
+                  sidebarPanel(
+                    selectInput("series", 
+                                "Choose a series:",
+                                choices = c("RGDP", "CPI", "Unemployment")),
+                    selectInput("interval", 
+                                "Choose a forecast interval:",
+                                choices = c("80%", "90%", "95%", "99%")),
+                    sliderInput("periods",
+                                "Forecasting periods ahead:",
+                                min = 2,
+                                max = 8,
+                                value = 2),
+                    submitButton("Udate Forecast", icon("refresh")),
+                  ),
+                  mainPanel(
+                    tabsetPanel(type="tabs",
+                                tabPanel("Forecast",
+                                         plotOutput("forecast.plot"),
+                                         h4("Summary of Data"),
+                                         tableOutput("summary.table")
+                                ),
+                                tabPanel("View FRED Data",dataTableOutput("fred.table"))
+                    )
+                  ),
+                  position = "left",
+                  fluid = TRUE
+                )  
 )
 
 server <- function(input, output, session) {
   
-  f1_plot_data <- function(series0) {
+  thematic::thematic_shiny()
   
+  f1_plot_data <- function(series0) {
+    
     fred_data_f1 <- fredr(series_id = "A191RL1Q225SBEA") %>%
       select(date, value) %>%
       mutate(value = value/100)
@@ -66,7 +69,7 @@ server <- function(input, output, session) {
     
     fred_data_f1 <- fred_data_f1 %>%
       mutate(date = as.yearqtr((date)))
-      data.frame()
+    data.frame()
     
     return(list(fred_tsibble_f1, fred_data_f1))
     
@@ -89,7 +92,19 @@ server <- function(input, output, session) {
     return(list(forecast_f2, fred_tsibble_f2))
     
   }
+  
+  output$forecast.table <- renderTable({
     
+    forecast_saved_forecast.table <- f2_plot_forecast(input$series, input$periods)
+    
+    forecast_output <- forecast_saved_forecast.table[[1]]
+    fred_tsibble_output <- forecast_saved_forecast.table[[2]]
+    length_fred_tsibble_output <- as.numeric(count(fred_tsibble_output))
+    
+    interval0 <- as.numeric(substr(input$interval,1,2))
+    
+  })
+  
   output$forecast.plot <- renderPlot({
     
     plot_forecast_saved <- f2_plot_forecast(input$series, input$periods)
@@ -105,7 +120,7 @@ server <- function(input, output, session) {
         fred_tsibble_output[(length_fred_tsibble_output - 30):(length_fred_tsibble_output) ,],
         level = interval0,
         show_gap = FALSE) + 
-      theme_hc() + 
+#      theme_hc() + 
       theme(legend.position = "None", 
             plot.title = element_text(hjust = 0.5)) +
       xlab(label = element_blank()) +
@@ -132,7 +147,7 @@ server <- function(input, output, session) {
     
     names(df_summary.table) <- c("% Change: Total",
                                  paste("% Change: ", fred_data_summary.table[n0,"date"]),
-                                 paste("% Change: ", fred_data_summary.table[(n0-3),"date"]," to ", fred_data_summary.table[n0,"date"]),
+                                 paste("% Change: ", fred_data_summary.table[(n0-3),"date"],"-", fred_data_summary.table[n0,"date"]),
                                  "Standard Deviation: Total")
     
     return(df_summary.table)
