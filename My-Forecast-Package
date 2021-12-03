@@ -1,0 +1,209 @@
+library(tidyverse)
+library(tsibble)
+library(lubridate)
+library(timetk)
+library(fredr)
+library(stats)
+library(forecast)
+fredr_set_key("0962c1d1b6316b7c4b6c68ced8211ac9")
+
+tsibble0 <- fredr(series_id = "A191RL1Q225SBEA") %>% select(date, value)
+
+get_dates <- function(tsibble, freq) {
+  tsibble_df <- tsibble %>% data.frame()
+  n <- nrow(tsibble_df)
+  
+  if (freq == 1) {
+    start_date <- year(tsibble_df[1,'date'])
+    end_date <- year(tsibble_df[n,'date'])
+  } else if (freq == 4) {
+    start_date <- c(year(tsibble_df[1,'date']),
+                    quarter(tsibble_df[1,'date']))
+    end_date <- c(year(tsibble_df[n,'date']),
+                    quarter(tsibble_df[n,'date']))
+  } else if (freq == 12) {
+    start_date <- c(year(tsibble_df[n,'date']),
+                    month(tsibble_df[n,'date']))
+  } else {
+    stop("Error: Frequency must be 1 (annual), 4 (quarterly), or 12 (monthly)")
+  }
+}
+
+create_ts <- function(tsibble, freq) {
+  
+  tsibble_df <- tsibble %>% data.frame()
+  
+  if (freq == 1) {
+    start_date <- year(tsibble_df[1,'date'])
+  } else if (freq == 4) {
+    start_date <- c(year(tsibble_df[1,'date']),
+                    quarter(tsibble_df[1,'date']))
+  } else if (freq == 12) {
+    start_date <- c(year(tsibble_df[1,'date']),
+                    month(tsibble_df[1,'date']))
+  } else {
+    stop("Error: Frequency must be 1 (annual), 4 (quarterly), or 12 (monthly)")
+  }
+  
+  tsibble_ts <- ts(tsibble_df$value, start = start_date, frequency = freq)
+  
+  return(tsibble_ts)
+  
+}
+
+ts0 <- tsibble0 %>% create_ts(4)
+h0 <- 8
+nsim0 <- 400
+
+fcast_mean <- function(ts, h, nsim) {
+  
+  matrix.fcast_mean <- matrix(0:0, nrow=1,ncol=h)
+  
+  for (i in 1:nsim) {
+    
+    initial.fcast_mean <- rnorm(1, mean = mean(as.numeric(ts)), sd = sd(as.numeric(ts)))
+    sim.fcast_mean <- c(initial.fcast_mean)
+    total.fcast_mean <- c(as.numeric(ts), initial.fcast_mean)
+    
+    for (j in 1:(h-1)) {
+      
+      additional.fcast_mean <- rnorm(1, 
+                                     mean = mean(total.fcast_mean),
+                                     sd = sd(total.fcast_mean))
+      sim.fcast_mean <- c(sim.fcast_mean, additional.fcast_mean)
+      total.fcast_mean <- c(total.fcast_mean, additional.fcast_mean)
+      
+    }
+    
+    matrix.fcast_mean <- rbind(matrix.fcast_mean, sim.fcast_mean)
+    
+  }
+  
+  row.names(matrix.fcast_mean) <- c(0:nsim)
+  
+  return(matrix.fcast_mean)
+  
+}
+
+fcast_arima <- function(ts, h, nsim) {
+  
+  matrix.fcast_arima <- matrix(0:0, nrow=1,ncol=h)
+  fit.fcast_arima <- auto.arima(ts)
+  
+  for (i in 1:nsim) {
+    
+    sim.fcast_arima <- simulate(fit.fcast_arima, nsim = h)
+    matrix.fcast_arima <- rbind(matrix.fcast_arima, sim.fcast_arima)
+    
+  }
+  
+  row.names(matrix.fcast_arima) <- c(0:nsim)
+  
+  return(matrix.fcast_arima)
+  
+}
+
+fcast_naive <- function(ts, h, nsim) {
+  
+  matrix.fcast_naive <- matrix(0:0, nrow=1,ncol=h)
+  fit.fcast_naive <- Arima(ts, order = c(1,0,0), seasonal = c(0,0,0))
+  
+  for (i in 1:nsim) {
+    
+    sim.fcast_naive <- simulate(fit.fcast_naive, nsim = h)
+    matrix.fcast_naive <- rbind(matrix.fcast_naive, sim.fcast_naive)
+    
+  }
+  
+  row.names(matrix.fcast_naive) <- c(0:nsim)
+  
+  return(matrix.fcast_naive)
+  
+}
+
+fcast_snaive <- function(ts, h, nsim) {
+  
+  matrix.fcast_snaive <- matrix(0:0, nrow=1,ncol=h)
+  fit.fcast_snaive <- Arima(ts, order = c(0,0,0), seasonal = c(1,0,0))
+  
+  for (i in 1:nsim) {
+    
+    sim.fcast_snaive <- simulate(fit.fcast_snaive, nsim = h)
+    matrix.fcast_snaive <- rbind(matrix.fcast_snaive, sim.fcast_snaive)
+    
+  }
+  
+  return(matrix.fcast_snaive)
+  
+  row.names(matrix.fcast_snaive) <- c(0:nsim)
+  
+}
+
+fcast_ets <- function(ts, h, nsim) {
+  
+  matrix.fcast_ets <- matrix(0:0, nrow=1,ncol=h)
+  fit.fcast_ets <- ets(ts)
+  
+  for (i in 1:nsim) {
+    
+    sim.fcast_ets <- simulate(fit.fcast_ets, nsim = h)
+    matrix.fcast_ets <- rbind(matrix.fcast_ets, sim.fcast_ets)
+    
+  }
+  
+  row.names(matrix.fcast_ets) <- c(0:nsim)
+  
+  return(matrix.fcast_ets)
+  
+}
+
+fcast_nnetar <- function(ts, h, nsim) {
+  
+  matrix.fcast_nnetar <- matrix(0:0, nrow=1,ncol=h)
+  fit.fcast_nnetar <- nnetar(ts)
+  
+  for (i in 1:nsim) {
+    
+    sim.fcast_nnetar <- simulate(fit.fcast_nnetar, nsim = h)
+    matrix.fcast_nnetar <- rbind(matrix.fcast_nnetar, sim.fcast_nnetar)
+    
+  }
+  
+  row.names(matrix.fcast_nnetar) <- c(0:nsim)
+  
+  return(matrix.fcast_nnetar)
+  
+}
+
+results.fcast_mean <- fcast_mean(ts0, h0, nsim0)
+results.fcast_arima <- fcast_arima(ts0, h0, nsim0)
+results.fcast_naive <- fcast_naive(ts0, h0, nsim0)
+results.fcast_snaive <- fcast_snaive(ts0, h0, nsim0)
+results.fcast_ets <- fcast_ets(ts0, h0, nsim0)
+results.fcast_nnetar <- fcast_nnetar(ts0, h0, nsim0)
+
+results.combined <- (1/6)*(results.fcast_mean + results.fcast_arima + results.fcast_naive + results.fcast_snaive + results.fcast_ets + results.fcast_nnetar)
+
+results.intervals <- function(matrix, h, nsim, conf) {
+  
+  lower <- c()
+  middle <- c()
+  upper <- c()
+  
+  lower_bound <- (1 - conf) / 2
+  upper_bound <- 1 - (1 - conf) / 2
+  
+  for (i in 1:h) {
+    
+    lower <- c(lower, 
+               as.numeric(quantile(matrix[2:nsim,i], probs = lower_bound)))
+    middle <- c(middle, 
+               mean(matrix[2:nsim,i]))
+    upper <- c(upper, 
+               as.numeric(quantile(matrix[2:nsim,i], probs = upper_bound)))
+    
+  }
+  
+  return(list(lower, middle, upper))
+  
+}
