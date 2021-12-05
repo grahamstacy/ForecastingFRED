@@ -5,59 +5,71 @@ library(timetk)
 library(fredr)
 library(stats)
 library(forecast)
-fredr_set_key("0962c1d1b6316b7c4b6c68ced8211ac9")
 
-tsibble0 <- fredr(series_id = "A191RL1Q225SBEA") %>% select(date, value)
+fredr::fredr_set_key("0962c1d1b6316b7c4b6c68ced8211ac9")
 
-get_dates <- function(tsibble, freq) {
+tsibble0 <- fredr::fredr(series_id = "A191RL1Q225SBEA") %>% select(date, value)
+freq0 <- 4
+
+calculate_dates <- function(tsibble, freq) {
+  
   tsibble_df <- tsibble %>% data.frame()
   n <- nrow(tsibble_df)
   
   if (freq == 1) {
-    start_date <- year(tsibble_df[1,'date'])
-    end_date <- year(tsibble_df[n,'date'])
+    
+    start_date_observed <- year(tsibble_df[1,'date'])
+    end_date_observed <- year(tsibble_df[n,'date'])
+    
+    start_date_forecasted <- end_date_observed + 1
+    
   } else if (freq == 4) {
-    start_date <- c(year(tsibble_df[1,'date']),
+    
+    start_date_observed <- c(year(tsibble_df[1,'date']),
                     quarter(tsibble_df[1,'date']))
-    end_date <- c(year(tsibble_df[n,'date']),
-                    quarter(tsibble_df[n,'date']))
+    end_date_observed <- c(year(tsibble_df[n,'date']),
+                  quarter(tsibble_df[n,'date']))
+    
+    start_date_forecasted <- c(end_date_observed[1], end_date_observed[2]+1)
+    
   } else if (freq == 12) {
-    start_date <- c(year(tsibble_df[n,'date']),
-                    month(tsibble_df[n,'date']))
+    
+    start_date_observed <- c(year(tsibble_df[n,'date']),
+                            month(tsibble_df[n,'date']))
+    end_date_observed <- c(year(tsibble_df[n,'date']),
+                           month(tsibble_df[n,'date']))
+    
+    start_date_forecasted <- c(end_date_observed[1], end_date_observed[2]+1)
+    
   } else {
     stop("Error: Frequency must be 1 (annual), 4 (quarterly), or 12 (monthly)")
   }
-}
-
-create_ts <- function(tsibble, freq) {
   
-  tsibble_df <- tsibble %>% data.frame()
-  
-  if (freq == 1) {
-    start_date <- year(tsibble_df[1,'date'])
-  } else if (freq == 4) {
-    start_date <- c(year(tsibble_df[1,'date']),
-                    quarter(tsibble_df[1,'date']))
-  } else if (freq == 12) {
-    start_date <- c(year(tsibble_df[1,'date']),
-                    month(tsibble_df[1,'date']))
-  } else {
-    stop("Error: Frequency must be 1 (annual), 4 (quarterly), or 12 (monthly)")
-  }
-  
-  tsibble_ts <- ts(tsibble_df$value, start = start_date, frequency = freq)
-  
-  return(tsibble_ts)
+  return(list(start_date_observed,start_date_forecasted))
   
 }
 
-ts0 <- tsibble0 %>% create_ts(4)
+results.start_date_observed <- calculate_dates(tsibble =tsibble0, 
+                                         freq = freq0)[[1]]
+results.start_date_forecasted <- calculate_dates(tsibble =tsibble0, 
+                                         freq = freq0)[[2]]
+
+ts0 <- tsibble0 %>% 
+  select(value) %>% 
+  data.frame() %>% 
+  ts(start = results.start_date_observed, 
+                       frequency = freq0)
 h0 <- 8
 nsim0 <- 400
+conf0 = 0.90
 
 fcast_mean <- function(ts, h, nsim) {
   
   matrix.fcast_mean <- matrix(0:0, nrow=1,ncol=h)
+  fitted.fcast_mean <- c()
+  for (i in 1:(length(ts))) {
+    fitted.fcast_mean <- c(fitted.fcast_mean, mean(as.numeric(ts)))
+  }
   
   for (i in 1:nsim) {
     
@@ -81,7 +93,7 @@ fcast_mean <- function(ts, h, nsim) {
   
   row.names(matrix.fcast_mean) <- c(0:nsim)
   
-  return(matrix.fcast_mean)
+  return(list(matrix.fcast_mean, fitted.fcast_mean))
   
 }
 
@@ -89,6 +101,7 @@ fcast_arima <- function(ts, h, nsim) {
   
   matrix.fcast_arima <- matrix(0:0, nrow=1,ncol=h)
   fit.fcast_arima <- auto.arima(ts)
+  fitted.fcast_arima <- as.numeric(fit.fcast_arima$fitted)
   
   for (i in 1:nsim) {
     
@@ -99,7 +112,7 @@ fcast_arima <- function(ts, h, nsim) {
   
   row.names(matrix.fcast_arima) <- c(0:nsim)
   
-  return(matrix.fcast_arima)
+  return(list(matrix.fcast_arima, fitted.fcast_arima))
   
 }
 
@@ -107,6 +120,7 @@ fcast_naive <- function(ts, h, nsim) {
   
   matrix.fcast_naive <- matrix(0:0, nrow=1,ncol=h)
   fit.fcast_naive <- Arima(ts, order = c(1,0,0), seasonal = c(0,0,0))
+  fitted.fcast_naive <- as.numeric(fit.fcast_naive$fitted)
   
   for (i in 1:nsim) {
     
@@ -117,7 +131,7 @@ fcast_naive <- function(ts, h, nsim) {
   
   row.names(matrix.fcast_naive) <- c(0:nsim)
   
-  return(matrix.fcast_naive)
+  return(list(matrix.fcast_naive, fitted.fcast_naive))
   
 }
 
@@ -125,6 +139,7 @@ fcast_snaive <- function(ts, h, nsim) {
   
   matrix.fcast_snaive <- matrix(0:0, nrow=1,ncol=h)
   fit.fcast_snaive <- Arima(ts, order = c(0,0,0), seasonal = c(1,0,0))
+  fitted.fcast_snaive <- as.numeric( fit.fcast_snaive$fitted )
   
   for (i in 1:nsim) {
     
@@ -133,9 +148,9 @@ fcast_snaive <- function(ts, h, nsim) {
     
   }
   
-  return(matrix.fcast_snaive)
-  
   row.names(matrix.fcast_snaive) <- c(0:nsim)
+  
+  return(list(matrix.fcast_snaive, fitted.fcast_snaive))
   
 }
 
@@ -143,6 +158,7 @@ fcast_ets <- function(ts, h, nsim) {
   
   matrix.fcast_ets <- matrix(0:0, nrow=1,ncol=h)
   fit.fcast_ets <- ets(ts)
+  fitted.fcast_ets <- as.numeric(fit.fcast_ets$fitted)
   
   for (i in 1:nsim) {
     
@@ -153,7 +169,7 @@ fcast_ets <- function(ts, h, nsim) {
   
   row.names(matrix.fcast_ets) <- c(0:nsim)
   
-  return(matrix.fcast_ets)
+  return(list(matrix.fcast_ets, fitted.fcast_ets))
   
 }
 
@@ -161,6 +177,7 @@ fcast_nnetar <- function(ts, h, nsim) {
   
   matrix.fcast_nnetar <- matrix(0:0, nrow=1,ncol=h)
   fit.fcast_nnetar <- nnetar(ts)
+  fitted.fcast_nnetar <- as.numeric(fit.fcast_nnetar$fitted)
   
   for (i in 1:nsim) {
     
@@ -171,7 +188,7 @@ fcast_nnetar <- function(ts, h, nsim) {
   
   row.names(matrix.fcast_nnetar) <- c(0:nsim)
   
-  return(matrix.fcast_nnetar)
+  return(list(matrix.fcast_nnetar, fitted.fcast_nnetar))
   
 }
 
@@ -182,9 +199,10 @@ results.fcast_snaive <- fcast_snaive(ts0, h0, nsim0)
 results.fcast_ets <- fcast_ets(ts0, h0, nsim0)
 results.fcast_nnetar <- fcast_nnetar(ts0, h0, nsim0)
 
-results.combined <- (1/6)*(results.fcast_mean + results.fcast_arima + results.fcast_naive + results.fcast_snaive + results.fcast_ets + results.fcast_nnetar)
+results.combined <- (1/6)*(results.fcast_mean[[1]] + results.fcast_arima[[1]] + results.fcast_naive[[1]] + results.fcast_snaive[[1]] + results.fcast_ets[[1]] + results.fcast_nnetar[[1]])
+results.combined_fitted <- (1/6)*(results.fcast_mean[[2]] + results.fcast_arima[[2]] + results.fcast_naive[[2]] + results.fcast_snaive[[2]] + results.fcast_ets[[2]] + results.fcast_nnetar[[2]])
 
-results.intervals <- function(matrix, h, nsim, conf) {
+calculate_intervals <- function(matrix, h, nsim, conf) {
   
   lower <- c()
   middle <- c()
@@ -198,12 +216,47 @@ results.intervals <- function(matrix, h, nsim, conf) {
     lower <- c(lower, 
                as.numeric(quantile(matrix[2:nsim,i], probs = lower_bound)))
     middle <- c(middle, 
-               mean(matrix[2:nsim,i]))
+                mean(matrix[2:nsim,i]))
     upper <- c(upper, 
                as.numeric(quantile(matrix[2:nsim,i], probs = upper_bound)))
     
   }
   
   return(list(lower, middle, upper))
+  
+}
+
+results.intervals <- calculate_intervals(matrix = results.combined, 
+                               h = h0,
+                               nsim = nsim0,
+                               conf = conf0)
+
+results.lower <- ts(results.intervals[[1]],
+                    frequency = freq0,
+                    start = results.start_date_forecasted)
+results.middle <- ts(results.intervals[[2]],
+                    frequency = freq0,
+                    start = results.start_date_forecasted)
+results.upper <- ts(results.intervals[[3]],
+                    frequency = freq0,
+                    start = results.start_date_forecasted)
+
+results.fitted <- ts(results.combined_fitted,
+                     freq = freq0,
+                     start = results.start_date_observed)
+
+results.residuals <- results.fitted - ts0
+
+structure_fcast <- function(ts, lower, middle, upper, fitted, residuals) {
+  
+  output <- list(x = ts,
+                 mean = middle, 
+                 lower = lower, 
+                 upper = upper,
+                 level = (conf0*100),
+                 fitted = fitted,
+                 residuals = residuals)
+  
+  return(structure(output, class="forecast"))
   
 }
