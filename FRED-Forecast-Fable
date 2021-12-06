@@ -1,1 +1,194 @@
+library(tidyverse)
+library(tsibble)
+library(lubridate)
+library(timetk)
+library(fredr)
+library(stats)
+library(forecast)
+library(dplyr)
+library(stats)
+library(fable)
+library(tsibble)
+library(tsibbledata)
+library(zoo)
 
+fcast <- function(fred_api_key, 
+                  fred_series_id, 
+                  h = 4, 
+                  conf = 0.90, 
+                  nsim = 1000, 
+                  freq = NULL, 
+                  units = "lin",
+                  aggregation_method = "avg") {
+  
+  fredr::fredr_set_key(fred_api_key)
+  
+  compute <- function(fred_series_id, h, conf, nsim, freq, units, aggregation_method) {
+    
+    methods0 <- c("a","e","s","n","nn","m","lm","rw")
+    dictionary()
+    
+    tsibble0 <- fredr::fredr(series_id = fred_series_id, 
+                             frequency = freq, 
+                             units = units, 
+                             aggregation_method = aggregation_method) %>% 
+      select(date, value) %>%
+      na.omit() %>%
+      as_tsibble(index=date)
+    
+    tryCatch(
+      tsibble0 <- tsibble0 %>% mutate(date = year(date)),
+      error = function(e) tryCatch (
+        tsibble0 <- tsibble0 %>% mutate(date = yearquarter(date)),
+        error = function(e) tsibble0 <- tsibble0 %>% mutate(date = yearmonth(date))
+      )
+    )
+    
+    fcast_arima <- function(tsibble,h,nsim) {
+     
+      forecast_arima <- tsibble %>% model(arima0 = ARIMA(value)) %>%
+       forecast(bootstrap = TRUE, times = nsim, h = h) %>%
+       mutate(conf = hilo(value, conf0)) %>%
+       unpack_hilo(conf) %>%
+       as_tsibble(index = date) %>%
+       select(-.model,-value)
+      
+      return(forecast_arima)
+      
+    }
+    
+    fcast_ets <- function(tsibble,h,nsim) {
+      
+      forecast_arima <- tsibble %>% model(ets0 = ETS(value)) %>%
+        forecast(bootstrap = TRUE, times = nsim, h = h) %>%
+        mutate(conf = hilo(value, conf0)) %>%
+        unpack_hilo(conf) %>%
+        as_tsibble(index = date) %>%
+        select(-.model,-value)
+      
+      return(forecast_ets)
+      
+    }
+    
+    fcast_snaive <- function(tsibble,h,nsim) {
+      
+      model.snaive <- tsibble %>% model(snaive0 = ARIMA(value ~ pdq(0, 0, 0) + PDQ(0, 1, 0)))
+      
+      forecast_arima <- tsibble %>% model(snaive0 = ARIMA(value ~ pdq(0, 0, 0) + PDQ(0, 1, 0))) %>%
+        forecast(bootstrap = TRUE, times = nsim, h = h) %>%
+        mutate(conf = hilo(value, conf0)) %>%
+        unpack_hilo(conf) %>%
+        as_tsibble(index = date) %>%
+        select(-.model,-value)
+      
+      return(forecast_snaive0)
+      
+    }
+    
+    fcast_naive <- function(tsibble,h,nsim) {
+      
+      forecast_naive <- tsibble %>% model(naive0 = ARIMA(value ~ pdq(0, 1, 0) + PDQ(0, 0, 0))) %>%
+        forecast(bootstrap = TRUE, times = nsim, h = h) %>%
+        mutate(conf = hilo(value, conf0)) %>%
+        unpack_hilo(conf) %>%
+        as_tsibble(index = date) %>%
+        select(-.model,-value)
+      
+      return(forecast_naive0)
+      
+    }
+    
+    fcast_nnetar <- function(tsibble,h,nsim) {
+      
+      forecast_nnetar <- tsibble %>% model(nnetar0 = NNETAR(value)) %>%
+        forecast(bootstrap = TRUE, times = nsim, h = h) %>%
+        mutate(conf = hilo(value, conf0)) %>%
+        unpack_hilo(conf) %>%
+        as_tsibble(index = date) %>%
+        select(-.model,-value)
+      
+      return(forecast_nnetar)
+      
+    }
+    
+    fcast_mean <- function(tsibble,h,nsim) {
+      
+      matrix.fcast_mean <- matrix(0:0, nrow=1,ncol=h)
+      
+      for (i in 1:nsim) {
+        
+        initial.fcast_mean <- rnorm(1, mean = mean( tsibble$value ), sd = sd( tsibble$value ))
+        sim.fcast_mean <- c(initial.fcast_mean)
+        total.fcast_mean <- c(tsibble$value, initial.fcast_mean)
+        
+        for (j in 1:(h-1)) {
+          
+          additional.fcast_mean <- rnorm(1, 
+                                         mean = mean(total.fcast_mean),
+                                         sd = sd(total.fcast_mean))
+          sim.fcast_mean <- c(sim.fcast_mean, additional.fcast_mean)
+          total.fcast_mean <- c(total.fcast_mean, additional.fcast_mean)
+          
+        }
+        
+        matrix.fcast_mean <- rbind(matrix.fcast_mean, sim.fcast_mean)
+        
+      }
+      
+      row.names(matrix.fcast_mean) <- c(0:nsim)
+      
+      return(list(matrix.fcast_mean))
+      
+    }
+    
+    fcast_tslm <- function(tsibble,h,nsim) {
+      
+      forecast_tslm <- tsibble %>% model(tslm0 = TSLM(value)) %>%
+        forecast(bootstrap = TRUE, times = nsim, h = h) %>%
+        mutate(conf = hilo(value, conf0)) %>%
+        unpack_hilo(conf) %>%
+        as_tsibble(index = date) %>%
+        select(-.model,-value)
+      
+      return(forecast_tslm)
+      
+    }
+    
+    fcast_rwd <- function(tsibble,h,nsim) {
+     
+      forecast_rwd <- tsibble %>% model(rwd0 = RW(value ~ drift())) %>%
+        forecast(bootstrap = TRUE, times = nsim, h = h) %>%
+        mutate(conf = hilo(value, conf0)) %>%
+        unpack_hilo(conf) %>%
+        as_tsibble(index = date) %>%
+        select(-.model,-value)
+      
+      return(forecast_rwd)
+      
+    }
+    
+    results_combined <- list()
+    
+    if ("a" %in% methods0) {results_combined <- }
+    
+  }
+  
+  if (freq %in% c("m","q","a") || is.null(freq) && h == round(h) && h > 0 && nsim == round(nsim) && nsim >= 200  && between(conf,0,1)) {
+    compute(fred_series_id = fred_series_id,
+            freq = freq,
+            h = h,
+            nsim = nsim,
+            conf = conf,
+            units = units,
+            aggregation_method = aggregation_method)
+  } else {
+    stop("Error: invalid inputs \n 
+         - freq must be an integer > 0 (the periodicity of the time series) \n
+         - h must be an integer > 0 (the forecast horizon) \n
+         - nsim must be an integer >= 200 (the number of simulations for bootsrapping) \n
+         - conf must be a numeric between 0 and 1 (the confidence interval)")
+  }
+  
+}
+
+x <- fcast(fred_api_key = "0962c1d1b6316b7c4b6c68ced8211ac9", fred_series_id = "GDP")
