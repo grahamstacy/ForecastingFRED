@@ -26,7 +26,6 @@ fcast <- function(fred_api_key,
   compute <- function(fred_series_id, h, conf, nsim, freq, units, aggregation_method) {
     
     methods0 <- c("a","e","s","n","nn","m","lm","rw")
-    dictionary()
     
     tsibble0 <- fredr::fredr(series_id = fred_series_id, 
                              frequency = freq, 
@@ -43,73 +42,6 @@ fcast <- function(fred_api_key,
         error = function(e) tsibble0 <- tsibble0 %>% mutate(date = yearmonth(date))
       )
     )
-    
-    fcast_arima <- function(tsibble,h,nsim) {
-     
-      forecast_arima <- tsibble %>% model(arima0 = ARIMA(value)) %>%
-       forecast(bootstrap = TRUE, times = nsim, h = h) %>%
-       mutate(conf = hilo(value, conf0)) %>%
-       unpack_hilo(conf) %>%
-       as_tsibble(index = date) %>%
-       select(-.model,-value)
-      
-      return(forecast_arima)
-      
-    }
-    
-    fcast_ets <- function(tsibble,h,nsim) {
-      
-      forecast_arima <- tsibble %>% model(ets0 = ETS(value)) %>%
-        forecast(bootstrap = TRUE, times = nsim, h = h) %>%
-        mutate(conf = hilo(value, conf0)) %>%
-        unpack_hilo(conf) %>%
-        as_tsibble(index = date) %>%
-        select(-.model,-value)
-      
-      return(forecast_ets)
-      
-    }
-    
-    fcast_snaive <- function(tsibble,h,nsim) {
-      
-      model.snaive <- tsibble %>% model(snaive0 = ARIMA(value ~ pdq(0, 0, 0) + PDQ(0, 1, 0)))
-      
-      forecast_arima <- tsibble %>% model(snaive0 = ARIMA(value ~ pdq(0, 0, 0) + PDQ(0, 1, 0))) %>%
-        forecast(bootstrap = TRUE, times = nsim, h = h) %>%
-        mutate(conf = hilo(value, conf0)) %>%
-        unpack_hilo(conf) %>%
-        as_tsibble(index = date) %>%
-        select(-.model,-value)
-      
-      return(forecast_snaive0)
-      
-    }
-    
-    fcast_naive <- function(tsibble,h,nsim) {
-      
-      forecast_naive <- tsibble %>% model(naive0 = ARIMA(value ~ pdq(0, 1, 0) + PDQ(0, 0, 0))) %>%
-        forecast(bootstrap = TRUE, times = nsim, h = h) %>%
-        mutate(conf = hilo(value, conf0)) %>%
-        unpack_hilo(conf) %>%
-        as_tsibble(index = date) %>%
-        select(-.model,-value)
-      
-      return(forecast_naive0)
-      
-    }
-    
-    fcast_nnetar <- function(tsibble,h,nsim) {
-      
-      forecast_nnetar <- tsibble %>% model(nnetar0 = NNETAR(value)) %>%
-        forecast(bootstrap = TRUE, times = nsim, h = h) %>%
-        mutate(conf = hilo(value, conf0)) %>%
-        unpack_hilo(conf) %>%
-        as_tsibble(index = date) %>%
-        select(-.model,-value)
-      
-      return(forecast_nnetar)
-      
-    }
     
     fcast_mean <- function(tsibble,h,nsim) {
       
@@ -141,35 +73,163 @@ fcast <- function(fred_api_key,
       
     }
     
-    fcast_tslm <- function(tsibble,h,nsim) {
+    fcast_arima <- function(tsibble,h,nsim,conf) {
       
-      forecast_tslm <- tsibble %>% model(tslm0 = TSLM(value)) %>%
+      forecast_arima0 <- tsibble %>% model(arima0 = ARIMA(value)) %>%
         forecast(bootstrap = TRUE, times = nsim, h = h) %>%
-        mutate(conf = hilo(value, conf0)) %>%
+        mutate(conf = hilo(value, conf)) %>%
         unpack_hilo(conf) %>%
         as_tsibble(index = date) %>%
         select(-.model,-value)
       
-      return(forecast_tslm)
+      return(forecast_arima0)
       
     }
     
-    fcast_rwd <- function(tsibble,h,nsim) {
+    fcast_ets <- function(tsibble,h,nsim,conf) {
+      
+      forecast_ets0 <- tsibble %>% model(ets0 = ETS(value)) %>%
+        forecast(bootstrap = TRUE, times = nsim, h = h) %>%
+        mutate(conf = hilo(value, conf)) %>%
+        unpack_hilo(conf) %>%
+        as_tsibble(index = date) %>%
+        select(-.model,-value)
+      
+      return(forecast_ets0)
+      
+    }
+    
+    fcast_snaive <- function(tsibble,h,nsim,conf) {
+      
+      forecast_snaive0 <- tsibble %>% model(snaive0 = ARIMA(value ~ pdq(0, 0, 0) + PDQ(0, 1, 0))) %>%
+        forecast(bootstrap = TRUE, times = nsim, h = h) %>%
+        mutate(conf = hilo(value, conf)) %>%
+        unpack_hilo(conf) %>%
+        as_tsibble(index = date) %>%
+        select(-.model,-value)
+      
+      return(forecast_snaive0)
+      
+    }
+    
+    fcast_naive <- function(tsibble,h,nsim,conf) {
+      
+      forecast_naive0 <- tsibble %>% model(naive0 = ARIMA(value ~ pdq(0, 1, 0) + PDQ(0, 0, 0))) %>%
+        forecast(bootstrap = TRUE, times = nsim, h = h) %>%
+        mutate(conf = hilo(value, conf)) %>%
+        unpack_hilo(conf) %>%
+        as_tsibble(index = date) %>%
+        select(-.model,-value)
+      
+      return(forecast_naive0)
+      
+    }
+    
+    fcast_nnetar <- function(tsibble,h,nsim,conf) {
+      
+      forecast_nnetar0 <- tsibble %>% model(nnetar0 = NNETAR(value)) %>%
+        forecast(bootstrap = TRUE, times = nsim, h = h) %>%
+        mutate(conf = hilo(value, conf)) %>%
+        unpack_hilo(conf) %>%
+        as_tsibble(index = date) %>%
+        select(-.model,-value)
+      
+      return(forecast_nnetar0)
+      
+    }
+    
+    fcast_tslm <- function(tsibble,h,nsim,conf) {
+      
+      forecast_tslm0 <- tsibble %>% model(tslm0 = TSLM(value)) %>%
+        forecast(bootstrap = TRUE, times = nsim, h = h) %>%
+        mutate(conf = hilo(value, conf)) %>%
+        unpack_hilo(conf) %>%
+        as_tsibble(index = date) %>%
+        select(-.model,-value)
+      
+      return(forecast_tslm0)
+      
+    }
+    
+    fcast_rwd <- function(tsibble,h,nsim,conf) {
      
-      forecast_rwd <- tsibble %>% model(rwd0 = RW(value ~ drift())) %>%
+      forecast_rwd0 <- tsibble %>% model(rwd0 = RW(value ~ drift())) %>%
         forecast(bootstrap = TRUE, times = nsim, h = h) %>%
-        mutate(conf = hilo(value, conf0)) %>%
+        mutate(conf = hilo(value, conf)) %>%
         unpack_hilo(conf) %>%
         as_tsibble(index = date) %>%
         select(-.model,-value)
       
-      return(forecast_rwd)
+      return(forecast_rwd0)
       
     }
     
-    results_combined <- list()
+    results.combined <- fcast_naive(tsibble = tsibble0, h = h0, nsim = nsim0, conf = conf0)
     
-    if ("a" %in% methods0) {results_combined <- }
+    if ("a" %in% methods0) {
+      
+      results.fcast_arima <- fcast_arima(tsibble = tsibble0,
+                                         h = h0,
+                                         nsim = nsim0,
+                                         conf =  conf0)
+      results.combined <- results.combined %>% add_row(results.fcast_arima)
+      
+    }
+    
+    if ("e" %in% methods0) {
+      
+      results.fcast_ets <- fcast_ets(tsibble = tsibble0,
+                                         h = h0,
+                                         nsim = nsim0,
+                                         conf =  conf0)
+      results.combined <- results.combined %>% add_row(results.fcast_ets)
+      
+    }
+    
+    if ("s" %in% methods0) {
+      
+      results.fcast_snaive <- fcast_snaive(tsibble = tsibble0,
+                                     h = h0,
+                                     nsim = nsim0,
+                                     conf =  conf0)
+      results.combined <- results.combined %>% add_row(results.fcast_snaive)
+      
+    }
+    
+    if ("nn" %in% methods0) {
+      
+      results.fcast_nnetar <- fcast_nnetar(tsibble = tsibble0,
+                                           h = h0,
+                                           nsim = nsim0,
+                                           conf =  conf0)
+      results.combined <- results.combined %>% add_row(results.fcast_nnetar)
+      
+    }
+    
+    if ("lm" %in% methods0) {
+      
+      results.fcast_tslm <- fcast_tslm(tsibble = tsibble0,
+                                           h = h0,
+                                           nsim = nsim0,
+                                           conf =  conf0)
+      results.combined <- results.combined %>% add_row(results.fcast_tslm)
+      
+    }
+    
+    if ("rw" %in% methods0) {
+      
+      results.fcast_rwd <- fcast_rwd(tsibble = tsibble0,
+                                       h = h0,
+                                       nsim = nsim0,
+                                       conf =  conf0)
+      results.combined <- results.combined %>% add_row(results.fcast_rwd)
+      
+    }
+    
+    results.combined <- results.combined %>% 
+      as_tibble() %>% 
+      group_by(date) %>% 
+      summarise(mean = mean(.mean), lower = mean(conf_lower), upper = mean(conf_upper))
     
   }
   
