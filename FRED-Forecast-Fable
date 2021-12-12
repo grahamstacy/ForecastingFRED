@@ -17,39 +17,42 @@ fcast <- function(fred_api_key,
                   h = 4, 
                   conf = 90, 
                   nsim = 1000, 
-                  freq = NULL, 
-                  units = "lin",
-                  aggregation_method = "avg") {
+                  frequency = NULL, 
+                  units = "pch",
+                  aggregation_method = "avg",
+                  type = "forecast",
+                  preds = 8) {
   
-  fredr::fredr_set_key(fred_api_key)
-  
-  compute_fcast <- function(fred_series_id, h, conf, nsim, freq, units, aggregation_method) {
+  compute_fcast <- function(fred_api_key,
+                            fred_series_id, 
+                            h, 
+                            conf, 
+                            nsim, 
+                            frequency, 
+                            units, 
+                            aggregation_method,
+                            type,
+                            preds) {
     
     methods0 <- c("a","e","s","n","nn","m","lm","rw")
-    
     h0 <- h
     conf0 <- conf
     nsim0 <- nsim
+    preds0 <- preds
+    if (type %in% c("forecast","FORECAST","Forecast")) {
+      tscv0 <- FALSE
+    } else {tscv0 <- TRUE}
     
-    tsibble0 <- fredr::fredr(series_id = fred_series_id, 
-                             frequency = freq, 
-                             units = units, 
-                             aggregation_method = aggregation_method) %>% 
-      select(date, value) %>%
-      na.omit() %>%
-      as_tsibble(index=date)
+    tsibble0 <- get_fred(fred_series_id = fred_series_id,
+             fred_api_key =  fred_api_key,
+             frequency = frequency,
+             units = units,
+             aggregation_method = aggregation_method
+             )
     
-    try_year <- try(tsibble0 %>% mutate(date = year(date)), silent=TRUE)
-    try_quarter <- try(tsibble0 %>% mutate(date = yearquarter(date)), silent=TRUE)
-    try_month <- try(tsibble0 %>% mutate(date = yearmonth(date)), silent=TRUE)
+    obsv0 <- nrow(tsibble0)
     
-    if (is_tsibble(try_year)) {
-      tsibble0 <- try_year
-    } else if (is_tsibble(try_quarter)) {
-      tsibble0 <- try_quarter
-    } else if (is_tsibble(try_month)) {
-      tsibble0 <- try_month
-    } else {stop("Invalid Series: FRED Series must be annual, quartely, or monthly")}
+    if ((obsv0 < (preds0+h0)*3) && tscv0 == TRUE) {stop("Error: Dataset is too small for these cross-validation specification")}
     
     fcast_naive <- function(tsibble,h,nsim,conf) {
       
@@ -87,8 +90,6 @@ fcast <- function(fred_api_key,
         matrix.fcast_mean <- rbind(matrix.fcast_mean, sim.fcast_mean)
         
       }
-      
-      row.names(matrix.fcast_mean) <- c(0:nsim)
       
       return(list(matrix.fcast_mean))
       
@@ -173,6 +174,13 @@ fcast <- function(fred_api_key,
     }
     
     results.combined <- fcast_naive(tsibble = tsibble0, h = h0, nsim = nsim0, conf = conf0)
+    tscv.combined <- tsibble0 %>% data.frame() %>% filter(row_number() %in% c((obsv0-preds0+1):obsv0))
+    
+    tscv_window <- function(tsibble,h,pred_increment) {
+      return(
+        tsibble %>% filter( row_number() %in% c(1:(nrow(tsibble)- h - pred_increment)) )
+      )
+    }
     
     if ("a" %in% methods0) {
       
@@ -181,6 +189,27 @@ fcast <- function(fred_api_key,
                                          nsim = nsim0,
                                          conf =  conf0)
       results.combined <- results.combined %>% add_row(results.fcast_arima)
+      
+      if (tscv0 == TRUE) {
+        
+        tscv.arima <- c()
+        
+        for (i in 0:(preds0-1)) {
+          
+          increment.arima <- preds0-i
+          tscv_result.arima <- tscv_window(tsibble = tsibble0, h = h0, pred_increment = increment.arima) %>%
+            fcast_arima(h = h0, nsim = nsim0,conf =  conf0) %>%
+            data.frame() %>%
+            select(.mean) %>%
+            filter(row_number()==4) %>%
+            as.numeric()
+          tscv.arima <- c(tscv.arima, tscv_result.arima)
+          
+        }
+        
+        tscv.combined <- tscv.combined %>% data.frame(tscv.arima)
+        
+      }
       
     }
     
@@ -192,6 +221,27 @@ fcast <- function(fred_api_key,
                                      conf =  conf0)
       results.combined <- results.combined %>% add_row(results.fcast_ets)
       
+      if (tscv0 == TRUE) {
+        
+        tscv.ets<- c()
+        
+        for (i in 0:(preds0-1)) {
+          
+          increment.ets <- preds0-i
+          tscv_result.ets <- tscv_window(tsibble = tsibble0, h = h0, pred_increment = increment.arima) %>%
+            fcast_arima(h = h0, nsim = nsim0,conf =  conf0) %>%
+            data.frame() %>%
+            select(.mean) %>%
+            filter(row_number()==4) %>%
+            as.numeric()
+          tscv.ets <- c(tscv.ets, tscv_result.ets)
+          
+        }
+        
+        tscv.combined <- tscv.combined %>% data.frame(tscv.ets)
+        
+      }
+      
     }
     
     if ("s" %in% methods0) {
@@ -201,6 +251,27 @@ fcast <- function(fred_api_key,
                                            nsim = nsim0,
                                            conf =  conf0)
       results.combined <- results.combined %>% add_row(results.fcast_snaive)
+      
+      if (tscv0 == TRUE) {
+        
+        tscv.snaive <- c()
+        
+        for (i in 0:(preds0-1)) {
+          
+          increment.snaive <- preds0-i
+          tscv_result.snaive <- tscv_window(tsibble = tsibble0, h = h0, pred_increment = increment.arima) %>%
+            fcast_arima(h = h0, nsim = nsim0,conf =  conf0) %>%
+            data.frame() %>%
+            select(.mean) %>%
+            filter(row_number()==4) %>%
+            as.numeric()
+          tscv.snaive <- c(tscv.snaive, tscv_result.snaive)
+          
+        }
+        
+        tscv.combined <- tscv.combined %>% data.frame(tscv.snaive)
+        
+      }
       
     }
     
@@ -212,6 +283,27 @@ fcast <- function(fred_api_key,
                                            conf =  conf0)
       results.combined <- results.combined %>% add_row(results.fcast_nnetar)
       
+      if (tscv0 == TRUE) {
+        
+        tscv.nnetar <- c()
+        
+        for (i in 0:(preds0-1)) {
+          
+          increment.nnetar <- preds0-i
+          tscv_result.nnetar <- tscv_window(tsibble = tsibble0, h = h0, pred_increment = increment.arima) %>%
+            fcast_arima(h = h0, nsim = nsim0,conf =  conf0) %>%
+            data.frame() %>%
+            select(.mean) %>%
+            filter(row_number()==4) %>%
+            as.numeric()
+          tscv.nnetar <- c(tscv.nnetar, tscv_result.nnetar)
+          
+        }
+        
+        tscv.combined <- tscv.combined %>% data.frame(tscv.nnetar)
+        
+      }
+      
     }
     
     if ("lm" %in% methods0) {
@@ -221,6 +313,27 @@ fcast <- function(fred_api_key,
                                        nsim = nsim0,
                                        conf =  conf0)
       results.combined <- results.combined %>% add_row(results.fcast_tslm)
+      
+      if (tscv0 == TRUE) {
+        
+        tscv.tslm <- c()
+        
+        for (i in 0:(preds0-1)) {
+          
+          increment.tslm <- preds0-i
+          tscv_result.tslm <- tscv_window(tsibble = tsibble0, h = h0, pred_increment = increment.arima) %>%
+            fcast_arima(h = h0, nsim = nsim0,conf =  conf0) %>%
+            data.frame() %>%
+            select(.mean) %>%
+            filter(row_number()==4) %>%
+            as.numeric()
+          tscv.tslm <- c(tscv.tslm, tscv_result.tslm)
+          
+        }
+        
+        tscv.combined <- tscv.combined %>% data.frame(tscv.tslm)
+        
+      }
       
     }
     
@@ -236,6 +349,28 @@ fcast <- function(fred_api_key,
     
     if ("n" %in% methods0) {
       results.combined <- results.combined
+      
+      if (tscv0 == TRUE) {
+        
+        tscv.naive <- c()
+        
+        for (i in 0:(preds0-1)) {
+          
+          increment.naive <- preds0-i
+          tscv_result.naive <- tscv_window(tsibble = tsibble0, h = h0, pred_increment = increment.arima) %>%
+            fcast_arima(h = h0, nsim = nsim0,conf =  conf0) %>%
+            data.frame() %>%
+            select(.mean) %>%
+            filter(row_number()==4) %>%
+            as.numeric()
+          tscv.naive <- c(tscv.naive, tscv_result.naive)
+          
+        }
+        
+        tscv.combined <- tscv.combined %>% data.frame(tscv.naive)
+        
+      }
+      
     } else {
       results.combined <- results.combined %>% filter(!row_number() %in% c(1:h0))
     }
@@ -245,83 +380,31 @@ fcast <- function(fred_api_key,
       group_by(date) %>% 
       summarise(mean = mean(.mean), lower = mean(conf_lower), upper = mean(conf_upper))
     
-    return(results.combined, tsibble0)
+    if (tscv0 == TRUE) {
+      return(list(results.combined, tscv.combined, tsibble0))
+    } else {return(list(results.combined, tsibble0))}
     
   }
   
-  if ((freq %in% c("m","q","a", NULL) || is.null(freq)) && h == round(h) && h > 0 && nsim == round(nsim) && nsim >= 200  && between(conf,1,100)) {
-    compute_fcast(fred_series_id = fred_series_id,
-            freq = freq,
-            h = h,
-            nsim = nsim,
-            conf = conf,
-            units = units,
-            aggregation_method = aggregation_method)
-  } else {
-    stop("Error: invalid inputs \n 
-         - freq must be m,q,a, or empty, \n
-         - h must be an integer > 0 (the forecast horizon) \n
-         - nsim must be an integer >= 200 (the number of simulations for bootsrapping) \n
-         - conf must be a numeric between 0 and 1 (the confidence interval)")
-  }
-  
-}
-
-ts_cv <- function(preds = 8,
-                  fred_api_key, 
-                  fred_series_id, 
-                  h = 4, 
-                  conf = 90, 
-                  nsim = 1000, 
-                  freq = NULL, 
-                  units = "lin",
-                  aggregation_method = "avg") {
-  
-  computer_ts_cv <- function(preds,fred_series_id, h, conf, nsim, freq, units, aggregation_method){
-    
-    methods0 <- c("a","e","s","n","nn","m","lm","rw")
-    
-    h0 <- h
-    conf0 <- conf
-    nsim0 <- nsim
-    
-    tsibble0 <- fredr::fredr(series_id = fred_series_id, 
-                             frequency = freq, 
-                             units = units, 
-                             aggregation_method = aggregation_method) %>% 
-      select(date, value) %>%
-      na.omit() %>%
-      as_tsibble(index=date)
-    
-    if (obsv < (periods+h)*3) {stop("Error: Dataset is too small for these cross-validation specification")}
-    
-    try_year <- try(tsibble0 %>% mutate(date = year(date)), silent=TRUE)
-    try_quarter <- try(tsibble0 %>% mutate(date = yearquarter(date)), silent=TRUE)
-    try_month <- try(tsibble0 %>% mutate(date = yearmonth(date)), silent=TRUE)
-    
-    if (is_tsibble(try_year)) {
-      tsibble0 <- try_year
-    } else if (is_tsibble(try_quarter)) {
-      tsibble0 <- try_quarter
-    } else if (is_tsibble(try_month)) {
-      tsibble0 <- try_month
-    } else {stop("Invalid Series: FRED Series must be annual, quartely, or monthly")}
-    
-  }
-  
-  if ((freq %in% c("m","q","a", NULL) || is.null(freq)) && h == round(h) && h > 0 && nsim == round(nsim) && nsim >= 200  && between(conf,1,100)) {
-    compute_fcast(preds = preds,
+  if (type %in% c("forecast","FORECAST","Forecast","tscv","TSCV","Tscv","both","BOTH","Both") && (preds == round(preds) || is.null(preds)) && h == round(h) && h > 0 && nsim == round(nsim) && nsim >= 200  && between(conf,1,100)) {
+    if (type %in% c("forecast","FORECAST","Forecast") && is.null(preds) == FALSE) {
+      warning("Argument 'preds' is unused")
+    }
+    compute_fcast(fred_api_key = fred_api_key,
                   fred_series_id = fred_series_id,
-                  freq = freq,
+                  frequency = frequency,
                   h = h,
                   nsim = nsim,
                   conf = conf,
                   units = units,
-                  aggregation_method = aggregation_method)
+                  aggregation_method = aggregation_method,
+                  type=type,
+                  preds = preds)
   } else {
     stop("Error: invalid inputs \n 
-         - preds must be an integer > 0 (the number of predictions to calculate the CV score)
          - freq must be m,q,a, or empty, \n
+         - tscv must be 'forecast', 'tscv', or 'both'
+         - preds must be an integer > 0 or NULL
          - h must be an integer > 0 (the forecast horizon) \n
          - nsim must be an integer >= 200 (the number of simulations for bootsrapping) \n
          - conf must be a numeric between 0 and 1 (the confidence interval)")
@@ -329,4 +412,36 @@ ts_cv <- function(preds = 8,
   
 }
 
-x <- fcast(fred_api_key = "0962c1d1b6316b7c4b6c68ced8211ac9", fred_series_id = "GDP", units = "pch")
+get_fred <- function(fred_api_key, 
+                     fred_series_id,
+                     units = "pch",
+                     aggregation_method = "avg",
+                     frequency = NULL) {
+  
+  fredr::fredr_set_key(fred_api_key)
+  
+  tsibble.get_fred <- fredr::fredr(series_id = fred_series_id, 
+                           frequency = frequency, 
+                           units = units, 
+                           aggregation_method = aggregation_method) %>% 
+    select(date, value) %>%
+    na.omit() %>%
+    as_tsibble(index=date)
+  
+  try_year <- try(tsibble.get_fred %>% mutate(date = year(date)), silent=TRUE)
+  try_quarter <- try(tsibble.get_fred %>% mutate(date = yearquarter(date)), silent=TRUE)
+  try_month <- try(tsibble.get_fred %>% mutate(date = yearmonth(date)), silent=TRUE)
+  
+  if (is_tsibble(try_year)) {
+    tsibble.get_fred <- try_year
+  } else if (is_tsibble(try_quarter)) {
+    tsibble.get_fred <- try_quarter
+  } else if (is_tsibble(try_month)) {
+    tsibble.get_fred <- try_month
+  } else {stop("Invalid Series: FRED Series must be annual, quartely, or monthly")}
+  
+  return(tsibble.get_fred)
+  
+}
+
+x <- fcast(fred_api_key = "0962c1d1b6316b7c4b6c68ced8211ac9", fred_series_id = "GDP", type="both")
